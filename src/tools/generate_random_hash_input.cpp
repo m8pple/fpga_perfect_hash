@@ -7,6 +7,7 @@
 #include <cstring>
 
 #include <sys/types.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 std::mt19937 urng;
@@ -69,9 +70,9 @@ int main(int argc, char *argv[])
                 seed = atoi(argv[ia + 1]);
                 ia += 2;
             } else if (!strcmp(argv[ia], "--random-seed")) {
-                timespec ts;
-                clock_getres(CLOCK_REALTIME, &ts);
-                std::seed_seq seq{ (int)ts.tv_sec, (int)ts.tv_nsec, (int)getpid(), (int)getppid() };
+                struct timeval now;
+                gettimeofday(&now, NULL);
+                std::seed_seq seq{ (int)now.tv_sec, (int)now.tv_usec, (int)getpid(), (int)getppid() };
                 seq.generate(&seed, 1+&seed);
                 ia ++;
             } else if (!strcmp(argv[ia], "--distribution")) {

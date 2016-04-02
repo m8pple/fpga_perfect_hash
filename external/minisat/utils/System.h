@@ -35,6 +35,13 @@ static inline double cpuTime(void); // CPU-time in seconds.
 extern double memUsed();            // Memory in mega bytes (returns 0 for unsupported architectures).
 extern double memUsedPeak();        // Peak-memory in mega bytes (returns 0 for unsupported architectures).
 
+
+/* DT10 : Hacked in to get around problems with setrlimit in OS X. Apparently
+it just ignores any changes to RLIMIT_AS and RLIMIT_DATA, so for a big problem
+it will just grind through virtual memory. */
+    double getMaxMemory();
+    void setMaxMemory(double limit);
+
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -56,5 +63,6 @@ static inline double Minisat::cpuTime(void) {
     return (double)ru.ru_utime.tv_sec + (double)ru.ru_utime.tv_usec / 1000000; }
 
 #endif
+
 
 #endif

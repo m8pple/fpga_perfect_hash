@@ -96,3 +96,25 @@ double Minisat::memUsed() {
 
 double Minisat::memUsedPeak(void) { return memUsed(); }
 #endif
+
+/* DT10 : Hacked in to get around problems with setrlimit in OS X. Apparently
+it just ignores any changes to RLIMIT_AS and RLIMIT_DATA, so for a big problem
+it will just grind through virtual memory. */
+#if defined(__APPLE__)
+static double maxMemory=1000000000000;
+
+double Minisat::getMaxMemory()
+{ return maxMemory; }
+
+void Minisat::setMaxMemory(double limit)
+{
+    maxMemory=limit;
+}
+#else
+double Minisat::getMaxMemory()
+{ return DBL_MAX; }
+
+void Minisat::setMaxMemory(double)
+{}
+#endif
+

@@ -10,11 +10,77 @@
 #include <set>
 #include <fstream>
 
+
+// These are global as we may want to use them in signal handlers
+static std::ostream *pCsvDst=0;
+static std::ofstream csvLogFile;
+static std::string csvLogPrefix;
+
+static double startTime;
+static int wO=-1, wI=-1, wA=6;
+static int tries=0;
+
 double cpuTime()
 {
     struct rusage ru;
     getrusage(RUSAGE_SELF, &ru);
     return ru.ru_utime.tv_sec+ru.ru_utime.tv_usec/1000000.0;
+}
+
+static void signal_outOfTime(int signum)
+{
+    fprintf(stderr, "Out of time\n");
+    if(pCsvDst){
+        double solveTime=cpuTime()-startTime;
+        (*pCsvDst)<<csvLogPrefix<<", "<<wO<<", "<<wI<<", "<<wA<<", "<<solveTime<<", "<<tries<<", "<<"OutOfTime"<<"\n";
+        pCsvDst->flush();
+        fflush(0);
+        _exit(0);
+    }else{
+        _exit(1);
+    }
+}
+
+void setTimeAndSpaceLimit(double maxSeconds, double maxMegaBytes)
+{
+    // Note: this code is based heavily on code in minisat (Main.cc)
+
+    if (maxSeconds!=0){
+        rlimit rl;
+        getrlimit(RLIMIT_CPU, &rl);
+        if (rl.rlim_max == RLIM_INFINITY || (rlim_t)maxSeconds < rl.rlim_max){
+            rl.rlim_cur = (rlim_t)maxSeconds;
+            if (setrlimit(RLIMIT_CPU, &rl) == -1)
+                fprintf(stderr, "WARNING! Could not set resource limit: CPU-time.\n");
+        } }
+
+    // Set limit on virtual memory:
+    if (maxMegaBytes!=0){
+        rlim_t new_mem_lim = (rlim_t)(maxMegaBytes * 1024*1024);
+        rlimit rl;
+        getrlimit(RLIMIT_AS, &rl);
+        std::cerr<<"  new_mem_lim = "<<new_mem_lim<<", rl.rlim_max = "<<rl.rlim_max<<"\n";
+        if (rl.rlim_max == RLIM_INFINITY || new_mem_lim < rl.rlim_max){
+            std::cerr<<"  Setting\n";
+            rl.rlim_cur = new_mem_lim;
+            if (setrlimit(RLIMIT_AS, &rl) == -1)
+                fprintf(stderr, "WARNING! Could not set resource limit: Virtual memory.\n");
+        }
+
+#if defined(__APPLE__)
+        getrlimit(RLIMIT_DATA, &rl);
+        std::cerr<<"  new_mem_lim = "<<new_mem_lim<<", rl.rlim_max = "<<rl.rlim_max<<"\n";
+        if (rl.rlim_max == RLIM_INFINITY || new_mem_lim < rl.rlim_max){
+            rl.rlim_cur = new_mem_lim;
+            if (setrlimit(RLIMIT_DATA, &rl) == -1)
+                fprintf(stderr, "WARNING! Could not set resource limit: Virtual memory.\n");
+        }
+
+        Minisat::setMaxMemory(maxMegaBytes);
+#endif
+    }
+
+    signal(SIGXCPU, signal_outOfTime);
 }
 
 std::mt19937 urng;
@@ -32,21 +98,18 @@ void print_exception(const std::exception& e, int level =  0)
 int main(int argc, char *argv[])
 {
     int verbose=2;
-    int wA=6;
     std::string srcFileName="-";
     int maxTries=INT_MAX;
-    int wO=-1;
-    int wI=-1;
-    int wV=-1;
     std::string name="perfect";
     //std::string writeCpp="";
     std::string method="default";
+    int wV=0;
 
-    std::string csvLogDst;
-    std::string csvLogPrefix;
+    double maxTime=600;
+    double maxMem=4000;
 
     double solveTime=0.0;
-    int tries=0;
+    std::string csvLogDst;
 
     urng.seed(time(0));
 
@@ -90,6 +153,14 @@ int main(int argc, char *argv[])
                 if (wI < 1) throw std::runtime_error("Can't have wi < 1");
                 if (wI > 32) throw std::runtime_error("wo > 32 is unexpectedly large (edit code if you are sure).");
                 ia += 2;
+            } else if (!strcmp(argv[ia], "--max-time")) {
+                if ((argc - ia) < 2) throw std::runtime_error("No argument to --max-time");
+                maxTime = strtod(argv[ia + 1], 0);
+                ia += 2;
+            } else if (!strcmp(argv[ia], "--max-mem")) {
+                if ((argc - ia) < 2) throw std::runtime_error("No argument to --max-mem");
+                maxMem = strtod(argv[ia + 1], 0);
+                ia += 2;
             } else if (!strcmp(argv[ia], "--method")) {
                 if ((argc - ia) < 2) throw std::runtime_error("No argument to --method");
                 method = argv[ia + 1];
@@ -101,6 +172,24 @@ int main(int argc, char *argv[])
             } else {
                 throw std::runtime_error(std::string("Didn't understand argument ") + argv[ia]);
             }
+        }
+
+        if(!csvLogDst.empty()){
+            if(csvLogDst=="-"){
+                pCsvDst = &std::cout;
+            }else{
+                csvLogFile.open(csvLogDst);
+                if(!csvLogFile.is_open()){
+                    throw std::runtime_error("Couldn't open csv log destination.");
+                }
+                pCsvDst=&csvLogFile;
+            }
+
+        }
+
+        if(verbose>0){
+            fprintf(stderr, "Setting limits of %f seconds CPU time and %f MB of memory.\n", maxTime, maxMem);
+            setTimeAndSpaceLimit(maxTime, maxMem);
         }
 
         if (method == "default") {
@@ -165,7 +254,7 @@ int main(int argc, char *argv[])
 
         BitHash result;
 
-        double startTime=cpuTime();
+        startTime=cpuTime();
 
         tries = 1;
         bool success = false;
@@ -185,7 +274,7 @@ int main(int argc, char *argv[])
             if (verbose > 0) {
                 std::cerr << "  Solving problem with minisat...\n";
             }
-            auto sol = minisat_solve(prob);
+            auto sol = minisat_solve(prob, verbose);
 
             if (sol.empty()) {
                 if (verbose > 0) {
@@ -220,43 +309,32 @@ int main(int argc, char *argv[])
         double finishTime=cpuTime();
         solveTime=finishTime-startTime;
 
-        if(!csvLogDst.empty()){
-            std::ofstream dst(csvLogDst);
-            if(!dst.is_open())
-                throw std::runtime_error("Couldn't open csv destination log.");
-            dst<<csvLogPrefix<<", "<<wO<<", "<<wI<<", "<<wA<<", "<<solveTime<<", "<<tries<<", "<<(success?"Success":"Fail")<<"\n";
+        if(pCsvDst){
+            (*pCsvDst)<<csvLogPrefix<<", "<<wO<<", "<<wI<<", "<<wA<<", "<<solveTime<<", "<<tries<<", "<<(success?"Success":"OutOfAttempts")<<"\n";
         }
 
-        if (!success)
-            exit(1);
+        if (!success) {
+            if(pCsvDst) {
+                exit(0);
+            }else{
+                exit(1);
+            }
+        }
 
         // Print the two back to back
         result.print(std::cout);
         problem.print(std::cout);
 
+    }catch(Minisat::OutOfMemoryException &e){
+        if(pCsvDst){
+            (*pCsvDst)<<csvLogPrefix<<", "<<wO<<", "<<wI<<", "<<wA<<", "<<solveTime<<", "<<tries<<", "<<"OutOfMemory"<<"\n";
+        }
 
-        /*
-        if (writeCpp.size() > 0) {
-            std::ofstream dstFile;
-            if (writeCpp != "-") {
-                if (verbose > 0) {
-                    std::cerr << "Writing c++ to file '" << writeCpp << "'\n";
-                }
-                dstFile.open(writeCpp);
-                if (!dstFile.is_open())
-                    throw std::runtime_error(std::string("Couldn't open file '") + writeCpp + "'");
-            }
-            std::ostream &dst = dstFile.is_open() ? dstFile : std::cout;
-
-            write_cpp_hash(result, name, "", dst);
-            write_cpp_hit(result, problem, name, "", dst);
-            write_cpp_lookup(result, problem, name, "", dst);
-        }*/
+        std::cerr<<"Memory limit exceeded.";
+        exit(1);
     }catch(std::exception &e){
-        if(!csvLogDst.empty()){
-            std::ofstream dst(csvLogDst);
-            if(dst.is_open())
-                dst<<csvLogPrefix<<", "<<wO<<", "<<wI<<", "<<wA<<", "<<solveTime<<", "<<tries<<", "<<"Exception"<<"\n";
+        if(pCsvDst){
+            (*pCsvDst)<<csvLogPrefix<<", "<<wO<<", "<<wI<<", "<<wA<<", "<<solveTime<<", "<<tries<<", "<<"Exception"<<"\n";
         }
 
         std::cerr<<"Caught exception : ";

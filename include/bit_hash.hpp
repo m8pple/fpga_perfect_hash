@@ -19,6 +19,9 @@ struct BitHash
     std::vector<unsigned> selectors;
     std::vector<int> lut; // 0=0, 1=1, -1=undecided
 
+      bool operator==(const table &o)const
+      { return selectors==o.selectors && lut==o.lut; }
+
       void print(std::ostream &dst, unsigned idx, std::string prefix="") const
       {
           assert(lut.size()==(1u<<selectors.size()));
@@ -90,6 +93,9 @@ struct BitHash
   unsigned wI;
   unsigned wO;
   std::vector<table> tables;
+
+    bool operator==(const BitHash &o) const
+    { return wI==o.wI && wO==o.wO && tables==o.tables; }
 
     void print(std::ostream &dst, std::string prefix="") const
     {
@@ -163,7 +169,6 @@ struct BitHash
         }
         return true;
     }
-
 
 };
 

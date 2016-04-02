@@ -1,23 +1,49 @@
 
-#add_custom_command(OUTPUT generate_random_hash_input.test1 COMMAND generate_random_hash_input  )
-#add_custom_target(test_generate_random_hash_input ALL DEPENDS generate_random_hash_input.test1)
+# This wierdness is because I somtimes use clion to build things, and the
+# temporary files end up in a strange place with a hashed file name.
+# In clion you can set the place where the executables end up, but not where
+# everything else ends up.
+# So this exists so I can override in the IDE if necessary
+set(EXPERIMENT_DIR ${CMAKE_CURRENT_BINARY_DIR})
+
+file(MAKE_DIRECTORY ${EXPERIMENT_DIR})
 
 add_custom_target(test_input)
-add_custom_target(test_csv ALL)
+add_custom_target(test_csv)
 
-foreach( wO IN ITEMS 4 5 )
-    foreach( LF IN ITEMS 0.8 0.9)
-        foreach( I RANGE 4)
-            add_custom_command(OUTPUT input_${wO}_${LF}_${I}.key WORKING_DIRECTORY . COMMAND pwd COMMAND generate_random_hash_input --wi 16 --seed ${I} --wo ${wO} --load-factor ${LF} > input_${wO}_${LF}_${I}.key )
-            #add_custom_command(OUTPUT input_${wO}_${LF}.key COMMAND exit 1 WORKING_DIRECTORY . )
-            add_custom_target(input_${wO}_${LF}_${I}.keys DEPENDS input_${wO}_${LF}_${I}.key)
-            add_dependencies(test_input input_${wO}_${LF}_${I}.keys)
+foreach( D in ITEMS uniform exponential)
+    add_custom_target(test_csv_${D})
+    foreach( wO IN ITEMS 4 5 6 7 8)
+        add_custom_target(test_csv_${D}_${wO})
+        foreach( LF IN ITEMS 0.5 0.75 0.9375 1.0 )
+            set(acc "")
+            foreach( I RANGE 16)
+                add_custom_command(OUTPUT ${D}/wO_${wO}/input_${wO}_${LF}_${I}.key
+                        WORKING_DIRECTORY ${EXPERIMENT_DIR}
+                        COMMAND mkdir -p ${EXPERIMENT_DIR}/${D}/wO_${wO}
+                        COMMAND pwd
+                        COMMAND ls
+                        COMMAND generate_random_hash_input --wi 16 --seed ${I} --wo ${wO} --load-factor ${LF} > ${D}/wO_${wO}/input_${wO}_${LF}_${I}.key
+                        )
+                #add_custom_target(input_${D}_${wO}_${LF}_${I}_key DEPENDS ${D}/wO_${wO}/input_${wO}_${LF}_${I}.key)
+                #add_dependencies(test_input input_${D}_${wO}_${LF}_${I}_key)
 
-            add_custom_command(OUTPUT input_${wO}_${LF}_${I}.csv WORKING_DIRECTORY . COMMAND ls COMMAND perfect_fpga_hash --wi 16 --wo ${wO} --csv-log wibble input_${wO}_${LF}_${I}.csv < input_${wO}_${LF}_${I}.key
-                    DEPENDS input_${wO}_${LF}_${I}.keys)
-            #add_custom_command(OUTPUT input_${wO}_${LF}.key COMMAND exit 1 WORKING_DIRECTORY . )
-            add_custom_target(input_${wO}_${LF}_${I}.csvs DEPENDS input_${wO}_${LF}_${I}.csv)
-            add_dependencies(test_csv input_${wO}_${LF}_${I}.csvs)
-        endforeach(I)
-    endforeach(LF)
-endforeach(wO)
+                add_custom_command(OUTPUT ${D}/wO_${wO}/input_${wO}_${LF}_${I}.csv ${D}/wO_${wO}/input_${wO}_${LF}_${I}.sol
+                        WORKING_DIRECTORY ${EXPERIMENT_DIR}
+                        COMMAND perfect_fpga_hash --csv-log "${D},${wO},${LF},${I}" ${D}/wO_${wO}/input_${wO}_${LF}_${I}.csv < ${D}/wO_${wO}/input_${wO}_${LF}_${I}.key > ${D}/wO_${wO}/input_${wO}_${LF}_${I}.sol
+                        #DEPENDS input_${D}_${wO}_${LF}_${I}_key
+                        DEPENDS ${D}/wO_${wO}/input_${wO}_${LF}_${I}.key
+                        )
+                #add_custom_target(input_${D}_${wO}_${LF}_${I}_csv DEPENDS ${D}/wO_${wO}/input_${wO}_${LF}_${I}.csv)
+                #add_dependencies(test_csv_${D}_${wO}_${LF} ${D}/wO_${wO}/input_${wO}_${LF}_${I}.csv)
+
+                set(acc ${acc} ${D}/wO_${wO}/input_${wO}_${LF}_${I}.csv)
+            endforeach(I)
+            add_custom_target(test_csv_${D}_${wO}_${LF} DEPENDS ${acc})
+
+            add_dependencies(test_csv_${D}_${wO} test_csv_${D}_${wO}_${LF})
+        endforeach(LF)
+        add_dependencies(test_csv_${D} test_csv_${D}_${wO})
+    endforeach(wO)
+    add_dependencies(test_csv test_csv_${D})
+endforeach(D)

@@ -26,12 +26,30 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 
 namespace Minisat {
 
+#if defined(__APPLE__)
+    double memUsed();
+    double getMaxMemory();
+#endif
+
 //=================================================================================================
 // Simple layer on top of malloc/realloc to catch out-of-memory situtaions and provide some typing:
 
 class OutOfMemoryException{};
 static inline void* xrealloc(void *ptr, size_t size)
 {
+#if defined(__APPLE__)
+    /*! DT10 : Fake memory limit for OS X. This is a bit slow, but hopefully is not
+       on the critical path due to the zone allocator...
+
+       Production runs are probably on linux anyway, so this is just to stop things spinning
+       out of control on laptops.
+
+       TODO: If OS X ever supports setrlimit RLIMIT_AS / RMLIMIT_DATA, this can be removed.
+       */
+    if(memUsed() > getMaxMemory())
+        throw OutOfMemoryException();
+#endif
+
     void* mem = realloc(ptr, size);
     if (mem == NULL && errno == ENOMEM){
         throw OutOfMemoryException();

@@ -71,11 +71,13 @@ BitHash substitute(const BitHash &bh, const cnf_problem &cnf, const std::map<int
     return res;
 }
 
-std::map<int,int> minisat_solve(const cnf_problem &problem)
+std::map<int,int> minisat_solve(const cnf_problem &problem, int verbosity=0)
 {
     using namespace Minisat;
 
     Solver S;
+    S.verbosity=verbosity;
+
     for(const auto & v : problem.lutToVariable){
         while(v.second-1 >= S.nVars() ){
             S.newVar();
