@@ -9,6 +9,7 @@
 #include <iostream>
 #include <set>
 #include <fstream>
+#include <signal.h>
 
 
 // These are global as we may want to use them in signal handlers

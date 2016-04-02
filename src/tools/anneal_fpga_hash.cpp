@@ -9,6 +9,9 @@
 #include <set>
 #include <fstream>
 #include <cstring>
+#include <sys/time.h>
+#include <sys/resource.h>
+#include <signal.h>
 
 std::mt19937 urng;
 
