@@ -14,3 +14,5 @@ add_executable( polish_fpga_hash polish_fpga_hash.cpp )
 target_link_libraries(polish_fpga_hash hls_parser_minisat_lib)
 
 add_executable( write_fpga_hash_cpp write_fpga_hash_cpp.cpp )
+
+add_executable( write_fpga_hash_vhdl write_fpga_hash_vhdl.cpp )

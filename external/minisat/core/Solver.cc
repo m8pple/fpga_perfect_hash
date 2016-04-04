@@ -649,7 +649,7 @@ lbool Solver::search(int nof_conflicts)
                 max_learnts             *= learntsize_inc;
 
                 if (verbosity >= 1)
-                    printf("| %9d | %7d %8d %8d | %8d %8d %6.0f | %6.3f %% |\n", 
+                    fprintf(stderr, "| %9d | %7d %8d %8d | %8d %8d %6.0f | %6.3f %% |\n",
                            (int)conflicts, 
                            (int)dec_vars - (trail_lim.size() == 0 ? trail.size() : trail_lim[0]), nClauses(), (int)clauses_literals, 
                            (int)max_learnts, nLearnts(), (double)learnts_literals/nLearnts(), progressEstimate()*100);
@@ -762,10 +762,10 @@ lbool Solver::solve_()
     lbool   status            = l_Undef;
 
     if (verbosity >= 1){
-        printf("============================[ Search Statistics ]==============================\n");
-        printf("| Conflicts |          ORIGINAL         |          LEARNT          | Progress |\n");
-        printf("|           |    Vars  Clauses Literals |    Limit  Clauses Lit/Cl |          |\n");
-        printf("===============================================================================\n");
+        fprintf(stderr, "============================[ Search Statistics ]==============================\n");
+        fprintf(stderr, "| Conflicts |          ORIGINAL         |          LEARNT          | Progress |\n");
+        fprintf(stderr, "|           |    Vars  Clauses Literals |    Limit  Clauses Lit/Cl |          |\n");
+        fprintf(stderr, "===============================================================================\n");
     }
 
     // Search:
@@ -778,7 +778,7 @@ lbool Solver::solve_()
     }
 
     if (verbosity >= 1)
-        printf("===============================================================================\n");
+        fprintf(stderr, "===============================================================================\n");
 
 
     if (status == l_True){
@@ -866,7 +866,7 @@ void Solver::toDimacs(FILE* f, const vec<Lit>& assumps)
         toDimacs(f, ca[clauses[i]], map, max);
 
     if (verbosity > 0)
-        printf("Wrote %d clauses with %d variables.\n", cnt, max);
+        fprintf(stderr, "Wrote %d clauses with %d variables.\n", cnt, max);
 }
 
 
@@ -917,7 +917,7 @@ void Solver::garbageCollect()
 
     relocAll(to);
     if (verbosity >= 2)
-        printf("|  Garbage collection:   %12d bytes => %12d bytes             |\n", 
+        fprintf(stderr, "|  Garbage collection:   %12d bytes => %12d bytes             |\n",
                ca.size()*ClauseAllocator::Unit_Size, to.size()*ClauseAllocator::Unit_Size);
     to.moveTo(ca);
 }

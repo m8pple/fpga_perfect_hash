@@ -50,7 +50,7 @@ void write_vhdl_hash(const BitHash &bh, std::string name, std::string indent, st
     }
     dst<<indent<<"  // Final composition\n";
     dst<<indent<<"  hash <= ";
-    for(int i=0;i=bh.tables.size()-1;i--){
+    for(int i=bh.tables.size()-1;i>=0;i--){
         dst<<"bit_"<<i<<"<<"<<i;
         if(i!=0)
             dst<<" & ";
