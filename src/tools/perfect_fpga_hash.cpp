@@ -98,6 +98,7 @@ void print_exception(const std::exception& e, int level =  0)
 
 int main(int argc, char *argv[])
 {
+
     int verbose=2;
     std::string srcFileName="-";
     int maxTries=INT_MAX;
@@ -327,20 +328,24 @@ int main(int argc, char *argv[])
         problem.print(std::cout);
 
     }catch(Minisat::OutOfMemoryException &e){
+
         if(pCsvDst){
             (*pCsvDst)<<csvLogPrefix<<", "<<wO<<", "<<wI<<", "<<wA<<", "<<solveTime<<", "<<tries<<", "<<"OutOfMemory"<<"\n";
+	    pCsvDst->flush();
         }
 
         std::cerr<<"Memory limit exceeded.";
-        exit(1);
+        _exit(pCsvDst ? 0 : 1);
     }catch(std::exception &e){
         if(pCsvDst){
             (*pCsvDst)<<csvLogPrefix<<", "<<wO<<", "<<wI<<", "<<wA<<", "<<solveTime<<", "<<tries<<", "<<"Exception"<<"\n";
+	    pCsvDst->flush();
         }
 
         std::cerr<<"Caught exception : ";
         print_exception(e);
-        exit(1);
+	std::cerr.flush();
+        _exit(pCsvDst ? 0 : 1);
     }
 
     return 0;
