@@ -272,7 +272,8 @@ int main(int argc, char *argv[])
             if (verbose > 0) {
                 std::cerr << "  Converting to CNF...\n";
             }
-            auto prob = to_cnf(bh, problem.keys());
+            cnf_problem prob;
+            to_cnf(bh, problem.keys(), prob);
             if (verbose > 0) {
                 std::cerr << "  Solving problem with minisat...\n";
             }
@@ -285,9 +286,6 @@ int main(int argc, char *argv[])
             } else {
                 if (verbose > 0) {
                     std::cerr << "  Checking raw...\n";
-                }
-                if (!is_solution(prob, sol)) {
-                    throw std::runtime_error("Raw check Failed\n");
                 }
 
                 if (verbose > 0) {

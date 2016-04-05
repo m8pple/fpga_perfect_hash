@@ -32,9 +32,14 @@ struct cnf_problem
     // Mapping from (outputBit,lutAddr) to CNF variable
     std::map<std::pair<unsigned,unsigned>, int> lutToVariable;
     // Vector of CNF style clauses
-    std::vector<std::vector<int> > clauses;
+    //std::vector<std::vector<int> > clauses;
+
+    Minisat::Solver sat;
 };
 
+/*
+ * Now trust that this is true as we rely on minisat.
+ * TODO: delete
 bool is_solution(const cnf_problem &cnf, const std::map<int,int> &solution)
 {
     for(const auto &c : cnf.clauses){
@@ -56,6 +61,7 @@ bool is_solution(const cnf_problem &cnf, const std::map<int,int> &solution)
     }
     return true;
 }
+*/
 
 BitHash substitute(const BitHash &bh, const cnf_problem &cnf, const std::map<int,int> &solution)
 {
@@ -71,20 +77,23 @@ BitHash substitute(const BitHash &bh, const cnf_problem &cnf, const std::map<int
     return res;
 }
 
-std::map<int,int> minisat_solve(const cnf_problem &problem, int verbosity=0)
+std::map<int,int> minisat_solve(cnf_problem &problem, int verbosity=0)
 {
     using namespace Minisat;
 
-    Solver S;
+    Solver &S=problem.sat;
     S.verbosity=verbosity;
 
+    /*
     for(const auto & v : problem.lutToVariable){
         while(v.second-1 >= S.nVars() ){
             S.newVar();
         }
     }
+     */
     assert(S.nVars() == (int)problem.lutToVariable.size());
 
+    /*
     vec<Lit> lits;
     for(const auto &clause : problem.clauses){
         lits.clear();
@@ -94,6 +103,7 @@ std::map<int,int> minisat_solve(const cnf_problem &problem, int verbosity=0)
         }
         S.addClause(lits);
     }
+     */
 
     //printStats(S);
 
@@ -145,18 +155,27 @@ std::map<int,int> minisat_solve(const cnf_problem &problem, int verbosity=0)
 
 
 template<class TKeyCont>
-cnf_problem to_cnf(
+void to_cnf(
         const BitHash &bh,
-        const TKeyCont &keys
+        const TKeyCont &keys,
+        cnf_problem &res
 ) {
+
     // Set up a mapping from bits in the table to variables in the CNF output
-    std::map<std::pair<unsigned,unsigned>,int > bitMapping;
+    std::map<std::pair<unsigned,unsigned>,int > &bitMapping = res.lutToVariable;
+
+    // The thing we are going to build up.
+    Minisat::Solver &sat=res.sat;
 
     auto get_idx=[&](unsigned iO, unsigned iAddr) -> int
     {
         auto key=std::make_pair(iO,iAddr);
-        auto val=*bitMapping.insert(std::make_pair(key, bitMapping.size()+1)).first;
-        return val.second;
+
+        auto ins=bitMapping.insert(std::make_pair(key, bitMapping.size()+1));
+        if(ins.second){
+            sat.newVar();
+        }
+        return ins.first->second;
     };
 
     // Work out the hash values for a given key. The value might be
@@ -187,8 +206,6 @@ cnf_problem to_cnf(
         return res;
     };
 
-    std::vector<std::vector<int> > clauses;
-
     std::vector<std::vector<int> > hashes;
     hashes.reserve(keys.size());
     for(const auto &k : keys){
@@ -197,18 +214,28 @@ cnf_problem to_cnf(
         hashes.push_back(h0);
         ++it;
 
+        Minisat::vec<Minisat::Lit> lits;
         auto end=k.variants_end();
         while(it!=end){
             auto hx=calcHash(*it);
             // Need to assert that h0==hx
-            std::vector<int> tmp(2);
+            //std::vector<int> tmp(2);
             for(unsigned i=0;i<bh.wO;i++){
-                tmp[0]=h0[i];
-                tmp[1]=-hx[i];
-                clauses.push_back(tmp);
-                tmp[0]=-h0[i];
-                tmp[1]=hx[i];
-                clauses.push_back(tmp);
+                lits.clear();
+                lits.push(Minisat::mkLit(h0[i]));
+                lits.push(~Minisat::mkLit(hx[i]));
+                sat.addClause(lits);
+                //tmp[0]=h0[i];
+                //tmp[1]=-hx[i];
+                //clauses.push_back(tmp);
+
+                lits.clear();
+                lits.push(~Minisat::mkLit(h0[i]));
+                lits.push(Minisat::mkLit(hx[i]));
+                sat.addClause(lits);
+                //tmp[0]=-h0[i];
+                //tmp[1]=hx[i];
+                //clauses.push_back(tmp);
             }
 
             ++it;
@@ -296,15 +323,20 @@ cnf_problem to_cnf(
             }
 
             // Transfer them all over
-            std::move(acc.begin(), acc.end(), std::back_inserter(clauses));
+            //std::move(acc.begin(), acc.end(), std::back_inserter(clauses));
+
+            Minisat::vec<Minisat::Lit> lits;
+            for(const auto &clause : acc){
+                lits.clear();
+                for(int raw : clause) {
+                    int var = std::abs(raw) - 1;
+                    lits.push((raw > 0) ? Minisat::mkLit(var) : ~Minisat::mkLit(var));
+                }
+                sat.addClause(lits);
+            }
             acc.clear();
         }
     }
-
-    return cnf_problem{
-            bitMapping,
-            clauses
-    };
 };
 
 #endif //HLS_PARSER_BIT_HASH_CNF_HPP
