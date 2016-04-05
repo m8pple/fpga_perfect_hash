@@ -80,8 +80,8 @@ int main(int argc, char *argv[])
 
         write_vhdl_hash(solution, name, "", dst);
         write_vhdl_hit(solution, problem, name, "", dst);
-        /*write_vhdl_lookup(solution, problem, name, "", dst);
-        */
+        write_vhdl_lookup(solution, problem, name, "", dst);
+
         if(writeTest) {
             write_vhdl_test(solution, problem, name, "", dst);
         }

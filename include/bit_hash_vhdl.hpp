@@ -132,36 +132,81 @@ void write_vhdl_hit(const BitHash &bh, const key_value_set &keys, std::string na
     dst<<indent<<"  hash <= gotHash;\n";
     dst<<indent<<"end RTL;\n";
 }
-/*
-void write_cpp_lookup(const BitHash &bh, const key_value_set &keys, std::string name, std::string indent, std::ostream &dst)
+
+void write_vhdl_lookup(const BitHash &bh, const key_value_set &keys, std::string name, std::string indent, std::ostream &dst)
 {
+    unsigned wI=bh.wI, wO=bh.wO;
+
     // Fill with (hopefully) poison values
     std::vector<uint64_t> values(1<<bh.wO, 0xFFFFFFFFFFFFFFFFull);
 
+    unsigned wV = keys.getKeyWidth();
+    bool minimalHash=false;
+    if(wV==0){
+        minimalHash=true;
+        wV=(unsigned)ceil(log2(keys.size()));
+    }
+
     // Fill in the valid keys
+    unsigned pi=0;
     for(auto kv : keys){
         auto key=*kv.first.variants_begin();
         auto hash=bh(key);
-        std::cerr<<"  key="<<key<<" = "<<to_unsigned(key)<<", value="<<kv.second<<" = "<<to_unsigned(kv.second)<<"\n";
-        values.at(hash)=to_unsigned(kv.second);
+        if(minimalHash){
+            values.at(hash) = pi;
+            pi++;
+        }else {
+            values.at(hash) = to_unsigned(kv.second);
+        }
     }
 
-    dst << indent << "unsigned " << name << "_hash(unsigned x);\n";
-    dst<<"\n";
-    dst<<indent<<"unsigned long long "<<name<<"_lookup(unsigned x){\n";
-    dst<<indent<<"  static const unsigned long long values["<<(1<<bh.wO)<<"] = {\n";
+
+    dst<<indent<<"library ieee;\n";
+    dst<<indent<<"use ieee.std_logic_1164.all;\n";
+    dst<<indent<<"use ieee.numeric_std.all\n\n;";
+
+    dst<<indent<<"entity "<<name<<"_lookup is \n";
+    dst<<indent<<"  port (\n";
+    dst<<indent<<"    key : in std_logic_vector("<<(wI-1)<<" downto 0);\n";
+    dst<<indent<<"    hit : out std_logic;\n";
+    dst<<indent<<"    hash : out std_logic_vector("<<(wO-1)<<" downto 0);\n";
+    dst<<indent<<"    value : out std_logic_vector("<<(wV-1)<<" downto 0)\n";
+    dst<<indent<<"  );\n";
+    dst<<indent<<"end "<<name<<"_lookup;\n\n";
+
+    dst<<indent<<"architecture RTL of "<<name<<"_lookup is\n";
+    dst<<indent<<"  component "<<name<<"_hit \n";
+    dst<<indent<<"    port (\n";
+    dst<<indent<<"      key : in std_logic_vector("<<(wI-1)<<" downto 0);\n";
+    dst<<indent<<"      hash : out std_logic_vector("<<(wO-1)<<" downto 0);\n";
+    dst<<indent<<"      hit : out std_logic\n";
+    dst<<indent<<"    );\n";
+    dst<<indent<<"  end component;\n";
+
+    dst<<indent<<"  type value_array_t is array(0 to "<<((1<<wO)-1)<<") of std_logic_vector("<<(wV-1)<<" downto 0);\n";
+    dst<<indent<<"  signal values : value_array_t := (\n";
     for(unsigned i=0;i<values.size();i++){
-        dst<<indent<<"    "<<values[i]<<"ull";
+        uint64_t val=values[i];
+        dst<<indent<<"    "<<i<<" => \"";
+        for(int i=wV-1;i>=0;i--){
+            dst<<((val>>i)&1);
+        }
+        dst<<"\"";
         if(i!=values.size()-1)
             dst<<",";
         dst<<"\n";
     }
-    dst<<indent<<"  };\n";
-    dst<<indent<<"  unsigned long long value=values["<<name<<"_hash(x)];\n";
-    dst<<indent<<"  return value;\n";
-    dst<<indent<<"}\n";
+    dst<<indent<<"  );\n";
+    dst<<indent<<"  signal gotHash : std_logic_vector("<<(wO-1)<<" downto 0);\n";
+    //dst<<indent<<"  signal val : std_logic_vector("<<(wV-1)<<" downto 0);\n";
+    dst<<indent<<"begin\n";
+    dst<<indent<<"   theHash : "<<name<<"_hit port map(key=>key,hash=>gotHash,hit=>hit);\n";
+    dst<<indent<<"\n";
+    dst<<indent<<"  value <= values(to_integer(unsigned(gotHash)));\n";
+    dst<<indent<<"  hash <= gotHash;\n";
+    dst<<indent<<"end RTL;\n";
 }
-*/
+
 
 void write_vhdl_test(const BitHash &bh, const key_value_set &keys, std::string name, std::string indent, std::ostream &dst)
 {
@@ -216,7 +261,7 @@ void write_vhdl_test(const BitHash &bh, const key_value_set &keys, std::string n
     for(int i=0;i<wEntry;i++){ dst<<"0"; }
     dst<<indent<<"\"  );\n";
 
-    dst<<indent<<"  component "<<name<<"_hit \n";
+    dst<<indent<<"  component "<<name<<"_lookup \n";
     dst<<indent<<"    port (\n";
     dst<<indent<<"      key : in std_logic_vector("<<(wI-1)<<" downto 0);\n";
     dst<<indent<<"      hash : out std_logic_vector("<<(wO-1)<<" downto 0);\n";

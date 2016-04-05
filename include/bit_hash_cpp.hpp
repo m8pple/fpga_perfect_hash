@@ -99,12 +99,26 @@ void write_cpp_lookup(const BitHash &bh, const key_value_set &keys, std::string 
     // Fill with (hopefully) poison values
     std::vector<uint64_t> values(1<<bh.wO, 0xFFFFFFFFFFFFFFFFull);
 
+    unsigned wV = keys.getKeyWidth();
+    bool minimalHash=false;
+    if(wV==0){
+        minimalHash=true;
+        wV=(unsigned)ceil(log2(keys.size()));
+    }
+
     // Fill in the valid keys
+    unsigned pi=0;
     for(auto kv : keys){
         auto key=*kv.first.variants_begin();
         auto hash=bh(key);
-        std::cerr<<"  key="<<key<<" = "<<to_unsigned(key)<<", value="<<kv.second<<" = "<<to_unsigned(kv.second)<<"\n";
-        values.at(hash)=to_unsigned(kv.second);
+        if(minimalHash){
+            values.at(hash) = pi;
+            pi++;
+        }else {
+            values.at(hash) = to_unsigned(kv.second);
+        }
+        std::cerr<<"  key="<<key<<" = "<<to_unsigned(key)<<", value="<<values[hash]<<"\n";
+
     }
 
     dst << indent << "unsigned " << name << "_hash(unsigned x);\n";
