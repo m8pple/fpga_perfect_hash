@@ -106,6 +106,7 @@ int main(int argc, char *argv[])
     //std::string writeCpp="";
     std::string method="default";
     int wV=0;
+    unsigned maxHash=0;
 
     double maxTime=600;
     double maxMem=4000;
@@ -167,6 +168,14 @@ int main(int argc, char *argv[])
                 if ((argc - ia) < 2) throw std::runtime_error("No argument to --method");
                 method = argv[ia + 1];
                 ia += 2;
+            } else if (!strcmp(argv[ia], "--max-hash")) {
+                if ((argc - ia) < 2) throw std::runtime_error("No argument to --max-hash");
+                maxHash = atoi(argv[ia + 1]);
+                ia += 2;
+            } else if (!strcmp(argv[ia], "--minimal")) {
+                if ((argc - ia) < 1) throw std::runtime_error("No argument to --minimal");
+                maxHash=UINT_MAX;
+                ia += 1;
             /*} else if (!strcmp(argv[ia], "--write-cpp")) {
                 if ((argc - ia) < 2) throw std::runtime_error("Not enough arguments to --write-cpp");
                 writeCpp = argv[ia + 1];
@@ -225,6 +234,18 @@ int main(int argc, char *argv[])
             std::cerr << "wValue = " << problem.getValueWidth() << "\n";
         }
 
+        if(maxHash==UINT_MAX){
+            if(verbose>0){
+                std::cerr << " Building minimal hash.\n";
+            }
+            problem.setMaxHash(maxHash);
+        }else if(maxHash>0){
+            if(verbose>0){
+                std::cerr << " Setting maxHash="<<maxHash<<"\n";
+            }
+            problem.setMaxHash(maxHash);
+        }
+
         if (wI == -1) {
             wI = problem.getKeyWidth();
             if (verbose > 0) {
@@ -240,7 +261,7 @@ int main(int argc, char *argv[])
             unsigned nKeys = problem.keys_size();
             wO = (unsigned) ceil(log(nKeys) / log(2.0));
             if (verbose > 0) {
-                std::cerr << "Auto-selecting wO = " << wI << " based on nKeys = " << nKeys << "\n";
+                std::cerr << "Auto-selecting wO = " << wO << " based on nKeys = " << nKeys << "\n";
             }
         } else {
             if ((1u << wO) < problem.keys_size()) {
@@ -273,7 +294,7 @@ int main(int argc, char *argv[])
                 std::cerr << "  Converting to CNF...\n";
             }
             cnf_problem prob;
-            to_cnf(bh, problem.keys(), prob);
+            to_cnf(bh, problem.keys(), prob, problem.getMaxHash());
             if (verbose > 0) {
                 std::cerr << "  Solving problem with minisat...\n";
             }
@@ -318,6 +339,13 @@ int main(int argc, char *argv[])
                 exit(0);
             }else{
                 exit(1);
+            }
+        }
+        if(verbose>1){
+            for(const auto &kv : problem){
+                auto key = *kv.first.variants_begin();
+
+                std::cerr<<"  "<<key<<" -> "<<result(key)<<"\n";
             }
         }
 

@@ -138,6 +138,8 @@ int main(int argc, char *argv[])
             (1 << wO) << " = " << problem.keys_size_distinct() / (double) (1 << wO) << "\n";
         }
 
+        std::uniform_real_distribution<> udist;
+
         BitHash solution= makeBitHashConcrete(urng, wO, wI, wA);
         double ePrev=evalSolution(solution, problem);
 
@@ -153,12 +155,20 @@ int main(int argc, char *argv[])
             //candidate=greedyTwoBitFast(candidate, problem);
 
             double eCandidate=evalSolution(candidate, problem);
+/*
+            if(eCandidate < 1.1*ePrev || eCandidate-ePrev < 10 ){
+                candidate=greedyOneBit(candidate,problem);
+                eCandidate=evalSolution(candidate, problem);
 
+            }
+*/
             if((verbose > 1) && (0==(tries%1000)) ){
                 std::cerr<<"    Try: "<<tries<<", eBest = "<<ePrev<<", eCandidate = "<<eCandidate<<", swapProprtion="<<swapProportion<<"\n";
             }
 
-            if(eCandidate < ePrev || (eCandidate==ePrev && !(candidate==solution))){
+            if(eCandidate < ePrev || (eCandidate==ePrev && !(candidate==solution) && (udist(urng)<0.5))){
+                solution=greedyOneBit(solution,problem);
+
                 std::swap(solution, candidate);
                 ePrev=eCandidate;
                 if(verbose > 1  ) {
@@ -169,7 +179,7 @@ int main(int argc, char *argv[])
                 greedyTwo=false;
                 greedyThree=false;
                 fails=0;
-            /*}else if(!greedyOne && fails>100) {
+            }else if(!greedyOne && fails>100 ) {
                 candidate=greedyOneBitFast(solution, problem);
                 eCandidate=evalSolution(candidate, problem);
 
@@ -186,7 +196,7 @@ int main(int argc, char *argv[])
                 }else{
                     greedyOne=true;
                 }
-            }else if(!greedyTwo && fails>1000) {
+            }else if( (!greedyTwo && fails>1000)) {
                 candidate=greedyTwoBitFast(solution, problem);
                 eCandidate=evalSolution(candidate, problem);
 
@@ -202,8 +212,8 @@ int main(int argc, char *argv[])
                     fails=0;
                 }else{
                     greedyTwo=true;
-                }*/
-            }else if(!greedyThree && fails > 10000 ) {
+                }
+            }else if(!greedyThree && fails > 10000 && problem.keys_size()<256 ) {
                 candidate=greedyThreeBitFast(solution, problem);
                 eCandidate=evalSolution(candidate, problem);
 
@@ -221,7 +231,7 @@ int main(int argc, char *argv[])
                     greedyThree=true;
                 }
             }else{
-                swapProportion *= 0.99999;
+                swapProportion *= 0.999;
                 fails++;
             }
 

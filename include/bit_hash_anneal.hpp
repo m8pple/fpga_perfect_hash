@@ -37,6 +37,8 @@ struct EntryToKey
     std::vector<unsigned> keys;
     std::vector<unsigned> hashes;
     std::vector<unsigned> counts;
+    std::vector<bool> packedBits;
+    double currScore;
 
     EntryToKey(BitHash &_bh, const key_value_set &_kvs)
         : bh(_bh)
@@ -62,39 +64,99 @@ struct EntryToKey
         hashes.resize(1<<bh.wO); // Maps:  Hash -> NumKeysInHash
         // Work out which entries are affected by each bit
 
-        for(const auto &kv : kvs){
-            unsigned ki=keys.size();
+        for (const auto &kv : kvs) {
+            unsigned ki = keys.size();
 
             // Loop over each output bit (i.e. lut output)
-            for(unsigned ti=0;ti<bh.wO;ti++) {
+            for (unsigned ti = 0; ti < bh.wO; ti++) {
                 // Find the address of the selected bit within the lut.
-                unsigned li=bh.tables[ti].address(kv.first); // Implies concrete key
+                unsigned li = bh.tables[ti].address(kv.first); // Implies concrete key
 
-                unsigned bi=pairToBit.at(std::make_pair(ti,li));
+                unsigned bi = pairToBit.at(std::make_pair(ti, li));
                 bits.at(bi).keys.push_back(ki);
             }
 
-            unsigned h=bh(kv.first);
+            unsigned h = bh(kv.first);
             keys.push_back(h);
             hashes.at(h)++;
         }
         //fprintf(stderr, "  nKeys = %u, sumHashes=%u", (unsigned)keys.size(), std::accumulate(hashes.begin(),hashes.end(),0));
 
-        // Work out how many hashes have the same count
-        counts.reserve((1<<bh.wO)+1); // Maps:  CountKeys -> NumHashesWithCountKeys
-        counts.resize(0); // Start off empty
-        unsigned ci=0, sumHashes=0;
-        for(auto c : hashes){
-            //fprintf(stderr, "  counts[%u] = %u\n", ci, c);
+#if 1
 
-            if(c>=counts.size())
-                counts.resize(c+1);
-            counts[c]++;
-            ci++;
-
-            sumHashes+=c;
+        std::vector<unsigned> costs(keys.size(), 0);
+        for(unsigned i=0;i<bits.size(); i++){
+            const auto & b=bits[i];
+            fprintf(stderr, " bit %u : %u\n", i, b.keys.size());
+            for(auto k : b.keys){
+                costs[k]+=b.keys.size();
+            }
         }
-        //fprintf(stderr,"  sumHashes=%u\n", sumHashes);
+        for(unsigned i=0;i<costs.size();i++){
+            fprintf(stderr, " key %u : %u\n",i,costs[i]);
+        }
+
+        std::vector<bit_vector> keysLin(_kvs.keys().begin(), _kvs.keys().end());
+
+        std::map<std::pair<unsigned,unsigned>,unsigned> shared;
+        for (unsigned ki=0;ki<keysLin.size()-1;ki++){
+            for(unsigned kj=ki+1;kj<keysLin.size();kj++){
+                for (unsigned t = 0; t < bh.wO; t++) {
+                    unsigned li = bh.tables[t].address(keysLin[ki]);
+                    unsigned lj = bh.tables[t].address(keysLin[kj]);
+
+                    if (li == lj)
+                        shared[std::make_pair(ki, kj)]++;
+                }
+            }
+        }
+
+        std::vector<std::pair<unsigned,std::pair<unsigned,unsigned> > > sharedRev;
+
+        for(const auto &tmp : shared) {
+            sharedRev.push_back(std::make_pair(tmp.second, tmp.first));
+        }
+        std::sort(sharedRev.begin(),sharedRev.end());
+
+        for(const auto &tmp : sharedRev){
+            fprintf(stderr, "  (%u,%u) = %u\n", tmp.second.first, tmp.second.second, tmp.first);
+        }
+
+
+        exit(1);
+#endif
+
+        packedBits.resize(bits.size());
+
+        sync();
+    }
+
+    void sync() {
+        for(auto & c : hashes){
+            c=0;
+        }
+
+        for(unsigned i=0;i<bitCount();i++){
+            packedBits[i] = *bits[i].pBit;
+        }
+
+        unsigned ki=0;
+        for (const auto &kv : kvs) {
+            unsigned h = bh(kv.first);
+            keys[ki]=h;
+            hashes.at(h)++;
+            ki++;
+        }
+
+        // Work out how many hashes have the same count
+        counts.resize(0); // Start off empty
+        for (auto c : hashes) {
+            if (c >= counts.size())
+                counts.resize(c + 1);
+            counts[c]++;
+        }
+
+        assert(evalFull(bh,kvs)==eval());
     }
 
     unsigned bitCount() const
@@ -105,7 +167,9 @@ struct EntryToKey
         const auto &info=bits.at(i);
 
         // Flip the bit
-        *info.pBit = 1 - *info.pBit;
+        int nb=1 - *info.pBit;
+        *info.pBit = nb;
+        packedBits[i]=nb;
 
         // Update all the hashes
         for(unsigned ki : info.keys){
@@ -131,19 +195,21 @@ struct EntryToKey
 
         }
 
+
     }
 
-    double eval() const
+    double eval(int groupSize=1) const
     {
         double acc=0;
-        for(int i=1;i<counts.size();i++){
+        for(int i=groupSize+1;i<counts.size();i++){
             //fprintf(stderr, "  Counts[%u] = %u\n", i, counts[i]);
-            acc += counts[i] * (i - 1);
+            acc += counts[i] * (i - groupSize); //*(i-1);
+
         }
         return acc;
     }
 
-    static double evalFull(const BitHash &bh, const key_value_set &kvs)
+    static double evalFull(const BitHash &bh, const key_value_set &kvs, int groupSize=1)
     {
         std::vector<unsigned> hits(1<<bh.wO, 0);
 
@@ -157,8 +223,8 @@ struct EntryToKey
 
         double acc=0;
         for(unsigned i=0;i<hits.size();i++){
-            if(hits[i]>0) {
-                acc += hits[i] - 1;
+            if(hits[i] > groupSize ) {
+                acc += (hits[i] - groupSize);
             }
         }
         return acc;
@@ -176,37 +242,9 @@ struct EntryToKey
  * Given a lack of anything better, the metric is just the euclidian norm of the
  * three, as I have no idea which is more important.
  */
-double evalSolution(const BitHash &bh, const key_value_set &keys)
+double evalSolution(const BitHash &bh, const key_value_set &keys, int groupSize)
 {
-    /*std::vector<unsigned> hits(1<<keys.getKeyWidth(), 0);
-
-    double m1=0, m2=0, m3=0;
-
-    for(const auto &kv : keys){
-        const auto &k=kv.first;
-
-        auto it=k.variants_begin();
-        unsigned h=bh(*it);
-
-        unsigned gh=++hits[h];
-        if(gh>1){
-            m1++;
-            m2=std::max(m2, (double)gh);
-        }
-
-        ++it;
-        auto end=k.variants_end();
-        while(it!=end){
-            unsigned ho=bh(*it);
-            if(ho!=h) {
-                m3++;
-            }
-            ++it;
-        }
-    }
-    return std::sqrt(0.1*m1*m1+0.9*m2*m2+m3*m3);*/
-
-    double ref=EntryToKey::evalFull(bh,keys);
+    double ref=EntryToKey::evalFull(bh,keys, groupSize);
 
     /*
     BitHash tmp(bh);
@@ -251,10 +289,65 @@ BitHash perturbHash(TRng &rng, const BitHash &x, double swapProportion)
     return bh;
 }
 
-BitHash greedyOneBit(const BitHash &bh, const key_value_set &problem)
+void greedyOneBit(EntryToKey &et, int groupSize)
+{
+    double eBest=et.eval(groupSize);
+
+    int flipBest=-1;
+
+    unsigned linear=0;
+    for(unsigned i=0; i<et.bitCount();i++){
+        et.flipBit(linear);
+
+        double eCurr=et.eval(groupSize);
+
+        if(eCurr < eBest){
+            eBest = eCurr;
+            flipBest = i;
+        }
+
+        et.flipBit(linear);
+
+    }
+
+    if(flipBest!=-1)
+        et.flipBit(flipBest);
+}
+
+void greedyTwoBit(EntryToKey &et, int groupSize)
+{
+    double eBest=et.eval(groupSize);
+
+    int flipBest1=-1, flipBest2=-1;
+
+    for(unsigned i=0; i<et.bitCount()-1;i++){
+        et.flipBit(i);
+        for(unsigned j=i+1; j<et.bitCount();j++) {
+            et.flipBit(j);
+
+            double eCurr = et.eval(groupSize);
+
+            if (eCurr < eBest) {
+                eBest = eCurr;
+                flipBest1 = i;
+                flipBest2 = j;
+            }
+
+            et.flipBit(j);
+        }
+        et.flipBit(i);
+    }
+
+    if(flipBest1!=-1) {
+        et.flipBit(flipBest1);
+        et.flipBit(flipBest2);
+    }
+}
+
+BitHash greedyOneBit(const BitHash &bh, const key_value_set &problem, int groupSize)
 {
     BitHash best(bh);
-    double eBest=evalSolution(bh, problem);
+    double eBest=evalSolution(bh, problem, groupSize);
 
     BitHash follow(bh);
     EntryToKey et(follow,problem);
@@ -267,8 +360,8 @@ BitHash greedyOneBit(const BitHash &bh, const key_value_set &problem)
 
             et.flipBit(linear);
 
-            double eCurr=evalSolution(curr, problem);
-            double eFollow=et.eval();
+            double eCurr=evalSolution(curr, problem, groupSize);
+            double eFollow=et.eval(groupSize);
 
             assert(eCurr==eFollow);
 
@@ -287,19 +380,20 @@ BitHash greedyOneBit(const BitHash &bh, const key_value_set &problem)
     return best;
 }
 
-BitHash greedyOneBitFast(const BitHash &bh, const key_value_set &problem)
+
+BitHash greedyOneBitFast(const BitHash &bh, const key_value_set &problem, int groupSize=1)
 {
     BitHash curr(bh);
     EntryToKey et(curr,problem);
 
-    double eBest=et.eval();
+    double eBest=et.eval(groupSize);
     BitHash best(bh);
 
     unsigned linear=0;
     for(unsigned linear=0; linear<et.bitCount(); linear++){
         et.flipBit(linear);
 
-        double eCurr=et.eval();
+        double eCurr=et.eval(groupSize);
 
         if(eCurr < eBest){
             best=curr;
@@ -312,10 +406,10 @@ BitHash greedyOneBitFast(const BitHash &bh, const key_value_set &problem)
     return best;
 }
 
-BitHash greedyTwoBit(const BitHash &bh, const key_value_set &problem)
+BitHash greedyTwoBit(const BitHash &bh, const key_value_set &problem, int groupSize=1)
 {
     BitHash best(bh);
-    double eBest=evalSolution(bh, problem);
+    double eBest=evalSolution(bh, problem,groupSize);
 
     BitHash curr(best);
     for(unsigned i=0; i<curr.tables.size()-1;i++){
@@ -325,7 +419,7 @@ BitHash greedyTwoBit(const BitHash &bh, const key_value_set &problem)
                 for (int &bj : curr.tables[j].lut) {
                     bj=1-bj;
 
-                    double eCurr = evalSolution(curr, problem);
+                    double eCurr = evalSolution(curr, problem, groupSize);
 
                     if (eCurr < eBest) {
                         best = curr;
@@ -343,12 +437,12 @@ BitHash greedyTwoBit(const BitHash &bh, const key_value_set &problem)
     return best;
 }
 
-BitHash greedyTwoBitFast(const BitHash &bh, const key_value_set &problem)
+BitHash greedyTwoBitFast(const BitHash &bh, const key_value_set &problem, int groupSize=1)
 {
     BitHash curr(bh);
     EntryToKey et(curr,problem);
 
-    double eBest=et.eval();
+    double eBest=et.eval(groupSize);
     BitHash best(bh);
 
     for(unsigned i=0; i<et.bitCount()-1; i++){
@@ -356,7 +450,7 @@ BitHash greedyTwoBitFast(const BitHash &bh, const key_value_set &problem)
         for(unsigned j=i+1; j<et.bitCount()-1; j++){
             et.flipBit(j);
 
-            double eCurr=et.eval();
+            double eCurr=et.eval(groupSize);
 
             if(eCurr < eBest){
                 best=curr;
@@ -372,10 +466,10 @@ BitHash greedyTwoBitFast(const BitHash &bh, const key_value_set &problem)
 }
 
 
-BitHash greedyThreeBit(const BitHash &bh, const key_value_set &problem)
+BitHash greedyThreeBit(const BitHash &bh, const key_value_set &problem, int groupSize)
 {
     BitHash best(bh);
-    double eBest=evalSolution(bh, problem);
+    double eBest=evalSolution(bh, problem, groupSize);
 
     BitHash curr(best);
     for(unsigned i=0; i<curr.tables.size()-2;i++){
@@ -388,7 +482,7 @@ BitHash greedyThreeBit(const BitHash &bh, const key_value_set &problem)
                         for (int &bk : curr.tables[k].lut) {
                             bk = 1 - bk;
 
-                            double eCurr = evalSolution(curr, problem);
+                            double eCurr = evalSolution(curr, problem, groupSize);
 
                             if (eCurr < eBest) {
                                 best = curr;
@@ -410,12 +504,12 @@ BitHash greedyThreeBit(const BitHash &bh, const key_value_set &problem)
     return best;
 }
 
-BitHash greedyThreeBitFast(const BitHash &bh, const key_value_set &problem)
+BitHash greedyThreeBitFast(const BitHash &bh, const key_value_set &problem, int groupSize)
 {
     BitHash curr(bh);
     EntryToKey et(curr,problem);
 
-    double eBest=et.eval();
+    double eBest=et.eval(groupSize);
     BitHash best(bh);
 
     for(unsigned i=0; i<et.bitCount()-2; i++){
@@ -425,7 +519,7 @@ BitHash greedyThreeBitFast(const BitHash &bh, const key_value_set &problem)
             for(unsigned k=j+1; k<et.bitCount(); k++){
                 et.flipBit(k);
 
-                double eCurr=et.eval();
+                double eCurr=et.eval(groupSize);
 
                 if(eCurr < eBest){
                     best=curr;
@@ -443,12 +537,12 @@ BitHash greedyThreeBitFast(const BitHash &bh, const key_value_set &problem)
 }
 
 
-BitHash greedyFourBitFast(const BitHash &bh, const key_value_set &problem)
+BitHash greedyFourBitFast(const BitHash &bh, const key_value_set &problem, int groupSize=1)
 {
     BitHash curr(bh);
     EntryToKey et(curr,problem);
 
-    double eBest=et.eval();
+    double eBest=et.eval(groupSize);
     BitHash best(bh);
 
     for(unsigned i=0; i<et.bitCount()-3; i++){
@@ -460,7 +554,7 @@ BitHash greedyFourBitFast(const BitHash &bh, const key_value_set &problem)
                 for(unsigned m=k+1; m<et.bitCount(); m++){
                     et.flipBit(m);
 
-                    double eCurr=et.eval();
+                    double eCurr=et.eval(groupSize);
 
                     if(eCurr < eBest){
                         best=curr;

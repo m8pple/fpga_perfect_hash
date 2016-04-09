@@ -13,6 +13,8 @@
 #include "core/Solver.h"
 #include "utils/System.h"
 
+#include "cnf_helpers.hpp"
+
 void printStats(Minisat::Solver& solver)
 {
     double cpu_time = Minisat::cpuTime();
@@ -84,29 +86,6 @@ std::map<int,int> minisat_solve(cnf_problem &problem, int verbosity=0)
     Solver &S=problem.sat;
     S.verbosity=verbosity;
 
-    /*
-    for(const auto & v : problem.lutToVariable){
-        while(v.second-1 >= S.nVars() ){
-            S.newVar();
-        }
-    }
-     */
-    assert(S.nVars() == (int)problem.lutToVariable.size());
-
-    /*
-    vec<Lit> lits;
-    for(const auto &clause : problem.clauses){
-        lits.clear();
-        for(int raw : clause) {
-            int var = std::abs(raw) - 1;
-            lits.push((raw > 0) ? mkLit(var) : ~mkLit(var));
-        }
-        S.addClause(lits);
-    }
-     */
-
-    //printStats(S);
-
     if (!S.simplify()) {
         return std::map<int,int>();
     }
@@ -158,7 +137,8 @@ template<class TKeyCont>
 void to_cnf(
         const BitHash &bh,
         const TKeyCont &keys,
-        cnf_problem &res
+        cnf_problem &res,
+        unsigned maxHash=0
 ) {
 
     // Set up a mapping from bits in the table to variables in the CNF output
@@ -335,6 +315,21 @@ void to_cnf(
                 sat.addClause(lits);
             }
             acc.clear();
+        }
+    }
+
+    // Enforce constraints on largest hash
+    if((maxHash>0) && (maxHash < (1<<bh.wO))){
+        bit_vector maxVal=to_bit_vector(maxHash);
+
+        std::vector<Minisat::Lit> lits(bh.wO);
+        for(const auto &hash : hashes){
+            for(int i=0;i<bh.wO;i++){
+                int raw=hash[i];
+                int var = std::abs(raw) - 1;
+                lits[i]=((raw > 0) ? Minisat::mkLit(var) : ~Minisat::mkLit(var));
+            }
+            requireLessThanOrEqual(sat, lits, maxVal);
         }
     }
 };
