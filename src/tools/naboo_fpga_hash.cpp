@@ -3,6 +3,7 @@
 
 #include "key_value_set.hpp"
 #include "weighted_shuffle.hpp"
+#include "bit_hash_history.hpp"
 
 #include <random>
 #include <iostream>
@@ -12,6 +13,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <signal.h>
+#include <queue>
 
 std::mt19937 urng;
 
@@ -149,60 +151,93 @@ int main(int argc, char *argv[])
         std::vector<BitHash> solBest(1, makeBitHashConcrete(urng, wO, wI, wA));
         double eBest=evalSolution(solBest[0], problem, groupSize);
 
-        double swapProportion=0.02;
         int tries = 0;
+        int triesAtLevel = 10000;
 
         BitHash solCurr=solBest[0];
         EntryToKey manipCurr(solCurr, problem);
 
+        typedef bit_signature_table<0> sig0_t;
+        typedef bit_signature_table<1> sig1_t;
+        typedef bit_signature_table<2> sig2_t;
+        typedef bit_sig_multi<sig0_t,bit_sig_multi<sig1_t,sig2_t> > sig_t;
+
+        unsigned maxNaboo=1<<16;
+        bit_sig_multi_set<sig_t> nabooSet(22);
+        std::queue<sig_t> nabooQueue;
 
 
-        double startTemperature=8.0;
-        double temperature=startTemperature;
-        int triesAtLevel=100000;
-        double decreaseAtLevel=0.9;
-
-        auto accept=[&](double ePrev, double eCurr)
+        auto isNaboo=[&](const sig_t &base, unsigned flip) -> bool
         {
-            if(eCurr < ePrev){
-                return 1.0;
-            }else if(eCurr == ePrev) {
-                return 0.5;
-            }else{
-                return exp((ePrev-eCurr)/temperature);
+            return nabooSet.contains_with_flip(base, flip);
+        };
+
+        auto addNaboo=[&](const sig_t &base)
+        {
+            if(nabooQueue.size()>maxNaboo){
+                nabooSet.remove(nabooQueue.front());
+                nabooQueue.pop();
             }
+            nabooSet.add(base);
+            nabooQueue.push(base);
         };
 
 
-        std::vector<int> flips;
         while (eBest!=0 && tries < maxTries) {
             double ePrev=manipCurr.eval(groupSize);
-            double eCurr=ePrev*10;
 
-            int nFlips=3+(unsigned)ceil(-log2(udist(urng)));
+            sig_t sig=toSignature<sig_t>(manipCurr);
 
-            for(int i=0; i<nFlips; i++) {
-                int b=urng()%manipCurr.bitCount();
-                manipCurr.flipBit(b);
-                flips.push_back(b);
+            double eBestLocal=ePrev*1e6;
+            std::vector<int> flipBestLocal;
 
-                eCurr=manipCurr.eval(groupSize);
-                if(eCurr < ePrev){
-                    break;
+            int allowed=0;
+            for(int i=0;i<manipCurr.bitCount();i++){
+                //auto sigNext(sig);
+                //sigNext.flip(i);
+                //std::cerr<<"   try "<<sigNext.str()<<", contained = "<<nabooSet.contains(sigNext)<<" \n";
+                //if(!nabooSet.contains(sigNext)){
+                if(!nabooSet.contains_with_flip(sig,i)){
+                    ++allowed;
+                    manipCurr.flipBit(i);
+
+                    double eCurr=manipCurr.eval(groupSize);
+                    if(eCurr<eBestLocal){
+                        flipBestLocal.clear();
+                    }
+                    if(eCurr<=eBestLocal){
+                        eBestLocal=eCurr;
+                        flipBestLocal.push_back(i);
+                    }
+
+                    manipCurr.flipBit(i);
                 }
             }
+
+            //if(verbose>1){
+            //    std::cerr<<"   allowed = "<<allowed<<", naboo= "<<nabooQueue.size()<<"\n";
+            //}
+
+            if(flipBestLocal.size()==0){
+                std::cerr<<"  out of moves...\n";
+                exit(1);
+            }
+
+            int flip=flipBestLocal[urng()%flipBestLocal.size()];
+            manipCurr.flipBit(flip);
+            double eCurr=manipCurr.eval(groupSize);
+            sig.flip(flip);
+
+            addNaboo(sig);
+            //std::cerr<<"  naboo includes : "<<sig.str()<<"\n";
+
 
             if(verbose>2){
                 std::cerr<<"    Try: "<<tries<<", e = "<<eCurr<<"\n";
             }
 
+
             if(eCurr <= eBest) {
-                /*if(solBest.size()>100) {
-                    greedyOneBit(manipCurr, groupSize);
-                }
-                if(solBest.size()>200) {
-                    greedyTwoBit(manipCurr, groupSize);
-                }*/
                 eCurr = manipCurr.eval(groupSize);
 
                 if(eCurr < eBest) {
@@ -227,44 +262,20 @@ int main(int argc, char *argv[])
                     }
                 }
                 eBest = eCurr;
-
-
-            }
-
-            double probAccept=accept(ePrev,eCurr);
-
-            if(udist(urng) < probAccept) {
-               // accept
-            }else {
-                for(int i=0; i<nFlips; i++) {
-                    manipCurr.flipBit(flips.back());
-                    flips.pop_back();
-                }
             }
 
             tries++;
 
+            if(udist(urng)<0.001){
+                solCurr=solBest[urng()%solBest.size()];
+                manipCurr.sync();
+            }
+
             if(0==(tries%triesAtLevel)){
-                temperature=temperature*decreaseAtLevel;
-                if(temperature<1e-6){
-                    startTemperature*=decreaseAtLevel;
-                    temperature=startTemperature;
-
-                    int sel;
-                    if(udist(urng)<0.9) {
-                        //sel=-log(udist(urng)) * 5;
-                        sel = sel % solBest.size();
-                        solCurr = *(solBest.rbegin()+sel);
-                    }else{
-                        sel=urng()%solBest.size();
-                    }
-                    manipCurr.sync();
-                }
-
                 if (verbose > 1) {
-                    std::cerr << "    Try: " << tries << ", eBest = " << eBest << ", nBest = "<<solBest.size()<<", ePrev = " << ePrev <<
-                    ", temperature = " << temperature << "\n";
+                    std::cerr << "    Try: " << tries << ", eBest = " << eBest << ", nBest = "<<solBest.size()<<", ePrev = " << ePrev <<", naboo=2^"<<log2(nabooQueue.size())<<"\n";
                 }
+
 
 
                 // cpuTime() is really expensive in OS X

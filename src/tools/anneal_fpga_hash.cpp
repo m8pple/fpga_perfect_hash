@@ -141,7 +141,7 @@ int main(int argc, char *argv[])
         std::uniform_real_distribution<> udist;
 
         BitHash solution= makeBitHashConcrete(urng, wO, wI, wA);
-        double ePrev=evalSolution(solution, problem);
+        double ePrev=evalSolution(solution, problem, 1);
 
         double swapProportion=0.02;
 
@@ -154,7 +154,7 @@ int main(int argc, char *argv[])
 
             //candidate=greedyTwoBitFast(candidate, problem);
 
-            double eCandidate=evalSolution(candidate, problem);
+            double eCandidate=evalSolution(candidate, problem, 1);
 /*
             if(eCandidate < 1.1*ePrev || eCandidate-ePrev < 10 ){
                 candidate=greedyOneBit(candidate,problem);
@@ -167,7 +167,7 @@ int main(int argc, char *argv[])
             }
 
             if(eCandidate < ePrev || (eCandidate==ePrev && !(candidate==solution) && (udist(urng)<0.5))){
-                solution=greedyOneBit(solution,problem);
+                solution=greedyOneBit(solution,problem, 1);
 
                 std::swap(solution, candidate);
                 ePrev=eCandidate;
@@ -181,7 +181,7 @@ int main(int argc, char *argv[])
                 fails=0;
             }else if(!greedyOne && fails>100 ) {
                 candidate=greedyOneBitFast(solution, problem);
-                eCandidate=evalSolution(candidate, problem);
+                eCandidate=evalSolution(candidate, problem, 1);
 
                 if(eCandidate < ePrev){
                     solution=candidate;
@@ -198,7 +198,7 @@ int main(int argc, char *argv[])
                 }
             }else if( (!greedyTwo && fails>1000)) {
                 candidate=greedyTwoBitFast(solution, problem);
-                eCandidate=evalSolution(candidate, problem);
+                eCandidate=evalSolution(candidate, problem, 1);
 
                 if(eCandidate < ePrev){
                     solution=candidate;
@@ -214,8 +214,8 @@ int main(int argc, char *argv[])
                     greedyTwo=true;
                 }
             }else if(!greedyThree && fails > 10000 && problem.keys_size()<256 ) {
-                candidate=greedyThreeBitFast(solution, problem);
-                eCandidate=evalSolution(candidate, problem);
+                candidate=greedyThreeBitFast(solution, problem, 1);
+                eCandidate=evalSolution(candidate, problem, 1);
 
                 if(eCandidate < ePrev){
                     solution=candidate;

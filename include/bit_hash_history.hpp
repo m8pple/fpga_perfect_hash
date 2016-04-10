@@ -5,6 +5,21 @@
 #ifndef FPGA_PERFECT_HASH_BIT_HASH_HISTORY_HPP
 #define FPGA_PERFECT_HASH_BIT_HASH_HISTORY_HPP
 
+#include "bit_hash.hpp"
+#include "bit_hash_anneal.hpp"
+
+template<class TSig>
+TSig toSignature(const EntryToKey &x)
+{
+    TSig res;
+    const auto &bits=x.getBits();
+    for(int i=0; i<bits.size();i++){
+        if(bits[i])
+            res.flip(i);
+    }
+    return res;
+}
+
 /*
  * A should be prime relative to 2^64 (a prime would work well...), so it
  * will go through every value as we calculate
@@ -182,10 +197,10 @@ private:
 
     template<class TFirst,class TRest>
     bool containsWithFlipR(const bit_sig_multi<TFirst,TRest> &sig, unsigned flip) const
-    { return containsWithFlipL(sig.first, flip) && containsWithFlipR(sig.rest, flip); }
+    { return containsWithFlipR(sig.first, flip) && containsWithFlipR(sig.rest, flip); }
 
     template<class THash>
-    void containsWithFlipL(const THash &hash, unsigned flip) const
+    bool containsWithFlipR(const THash &hash, unsigned flip) const
     {
         uint32_t h=hash.hash_with_flip(flip);
         h=((h<<m_shift)^h)>>m_shift;
@@ -239,7 +254,7 @@ public:
     { return containsR(sig); }
 
     bool contains_with_flip(const TSig &sig, unsigned flip)
-    { return containsWithFlipR(sig); }
+    { return containsWithFlipR(sig, flip); }
 
     void add(const TSig &sig)
     {
@@ -271,6 +286,7 @@ public:
 
     }
 };
+
 
 
 /*

@@ -82,7 +82,7 @@ struct EntryToKey
         }
         //fprintf(stderr, "  nKeys = %u, sumHashes=%u", (unsigned)keys.size(), std::accumulate(hashes.begin(),hashes.end(),0));
 
-#if 1
+#if 0
 
         std::vector<unsigned> costs(keys.size(), 0);
         for(unsigned i=0;i<bits.size(); i++){
@@ -161,6 +161,10 @@ struct EntryToKey
 
     unsigned bitCount() const
     { return bits.size(); }
+
+    const std::vector<bool> &getBits() const
+    {return packedBits; }
+
 
     void flipBit(int i)
     {
