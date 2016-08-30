@@ -16,6 +16,9 @@ add_executable( naboo_fpga_hash naboo_fpga_hash.cpp )
 add_executable( polish_fpga_hash polish_fpga_hash.cpp )
 target_link_libraries(polish_fpga_hash hls_parser_minisat_lib)
 
+add_executable( find_fpga_hash find_fpga_hash.cpp )
+target_link_libraries(find_fpga_hash hls_parser_minisat_lib)
+
 add_executable( write_fpga_hash_cpp write_fpga_hash_cpp.cpp )
 
 add_executable( write_fpga_hash_vhdl write_fpga_hash_vhdl.cpp )

@@ -16,12 +16,6 @@
 std::mt19937 urng;
 
 
-double cpuTime()
-{
-    struct rusage ru;
-    getrusage(RUSAGE_SELF, &ru);
-    return ru.ru_utime.tv_sec+ru.ru_utime.tv_usec/1000000.0;
-}
 
 void print_exception(const std::exception& e, int level =  0)
 {
@@ -234,7 +228,7 @@ int main(int argc, char *argv[])
             double probAccept=accept(ePrev,eCurr);
 
             if(udist(urng) < probAccept) {
-               // accept
+                // accept
             }else {
                 for(int i=0; i<nFlips; i++) {
                     manipCurr.flipBit(flips.back());
@@ -271,8 +265,6 @@ int main(int argc, char *argv[])
                 if(cpuTime() > maxTime)
                     break;
             }
-
-
         }
 
 

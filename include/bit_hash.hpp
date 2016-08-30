@@ -194,6 +194,19 @@ struct BitHash
         return true;
     }
 
+    std::vector<int> distance(const BitHash &bh) const
+    {
+        int d=0;
+        for(unsigned i=0; i<bh.tables.size(); i++){
+            assert(tables[i].taps==bh.tables[i].taps);
+            const auto &ta=tables[i].lut;
+            const auto &tb=bh.tables[i].lut;
+            for(unsigned j=0; j<ta.size(); j++){
+                d += std::abs(ta[j]-tb[j]);
+            }
+        }
+        return d;
+    }
 };
 
 

@@ -5,7 +5,9 @@
 #ifndef FPGA_PERFECT_HASH_BIT_HASH_ANNEAL_HPP
 #define FPGA_PERFECT_HASH_BIT_HASH_ANNEAL_HPP
 
+#include "solve_context.hpp"
 
+#include <cfloat>
 
 /* This decomposes the combination of bit has and keys into four
  * related data structures:
@@ -28,6 +30,8 @@ struct EntryToKey
 
     struct bit_info
     {
+        unsigned table;
+        unsigned offset;
         int *pBit;     // Direct pointer into table entries
         unsigned mask; // This is what will be added or removed for each
         std::vector<unsigned> keys; // Offsets of all keys that depend on this
@@ -53,6 +57,8 @@ struct EntryToKey
             for(int & i : t.lut){
                 pairToBit[std::make_pair(ti, li)] = bits.size();
                 bit_info b;
+                b.table=ti;
+                b.offset=li;
                 b.pBit=&i;
                 b.mask=1<<ti;
                 bits.push_back(b);
@@ -137,6 +143,8 @@ struct EntryToKey
         }
 
         for(unsigned i=0;i<bitCount();i++){
+            auto &bi = bits[i];
+            bits[i].pBit=&bh.tables[bi.table].lut[bi.offset];
             packedBits[i] = *bits[i].pBit;
         }
 
@@ -233,6 +241,29 @@ struct EntryToKey
         }
         return acc;
     }
+
+    std::vector<int> getBitsFor(const BitHash &x)
+    {
+        std::vector<int> res(bits.size());
+        for(unsigned i=0; i<res.size(); i++){
+            const auto &bi = bits[i];
+            res[i]=x.tables[bi.table].lut[bi.offset];
+        }
+        return res;
+    }
+
+    std::vector<int> getDifferenceIndices(const BitHash &x)
+    {
+        std::vector<int> res;
+        res.reserve(bits.size());
+        for(unsigned i=0; i<bits.size(); i++){
+            const auto &bi = bits[i];
+            int b=x.tables[bi.table].lut[bi.offset];
+            if(b!=*bits[i].pBit)
+                res.push_back(i);
+        }
+        return res;
+    }
 };
 
 
@@ -293,29 +324,41 @@ BitHash perturbHash(TRng &rng, const BitHash &x, double swapProportion)
     return bh;
 }
 
-void greedyOneBit(EntryToKey &et, int groupSize)
+void greedyOneBit(EntryToKey &et, int groupSize, bool ignoreCurrent=false)
 {
-    double eBest=et.eval(groupSize);
+    double eBest=ignoreCurrent ? DBL_MAX : et.eval(groupSize);
 
-    int flipBest=-1;
+    // We are very likely to have multiple equivalent solutions
+    std::vector<int> flipBest;
 
-    unsigned linear=0;
     for(unsigned i=0; i<et.bitCount();i++){
-        et.flipBit(linear);
+        et.flipBit(i);
 
         double eCurr=et.eval(groupSize);
 
         if(eCurr < eBest){
             eBest = eCurr;
-            flipBest = i;
+            flipBest.clear();
+            flipBest.push_back(i);
+        }else if(eCurr==eBest){
+            flipBest.push_back(i);
         }
 
-        et.flipBit(linear);
+        et.flipBit(i);
 
     }
 
-    if(flipBest!=-1)
-        et.flipBit(flipBest);
+    if(flipBest.size()>0) {
+        int sel;
+        if(solve_context::pSolveContext()){
+            auto &urng=solve_context::pSolveContext()->urng;
+            sel=urng()%flipBest.size();
+        }else{
+            sel=rand()%flipBest.size();
+        }
+        int i=flipBest.at(sel);
+        et.flipBit(i);
+    }
 }
 
 void greedyTwoBit(EntryToKey &et, int groupSize)
