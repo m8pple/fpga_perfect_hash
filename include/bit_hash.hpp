@@ -22,6 +22,15 @@ struct BitHash
       bool operator==(const table &o)const
       { return selectors==o.selectors && lut==o.lut; }
 
+      bool operator<(const table &o) const
+      {
+          if(selectors<o.selectors)
+              return true;
+          if(selectors>o.selectors)
+              return true;
+          return lut < o.lut;
+      }
+
       void print(std::ostream &dst, unsigned idx, std::string prefix="") const
       {
           assert(lut.size()==(1u<<selectors.size()));
@@ -97,6 +106,21 @@ struct BitHash
     bool operator==(const BitHash &o) const
     { return wI==o.wI && wO==o.wO && tables==o.tables; }
 
+    bool operator<(const BitHash &o) const {
+        if (wI < o.wI) return true;
+        if (wI > o.wI) return false;
+        if (wO < o.wO) return true;
+        if (wO > o.wO) return false;
+        for (unsigned i = 0; i < tables.size(); i++) {
+            if (tables[i] < o.tables.at(i))
+                return true;
+            if (o.tables.at(i) < tables[i])
+                return false;
+        }
+
+        return false;
+    }
+
     void print(std::ostream &dst, std::string prefix="") const
     {
         assert(tables.size()==wO);
@@ -170,7 +194,59 @@ struct BitHash
         return true;
     }
 
+    std::vector<int> distance(const BitHash &bh) const
+    {
+        int d=0;
+        for(unsigned i=0; i<bh.tables.size(); i++){
+            assert(tables[i].taps==bh.tables[i].taps);
+            const auto &ta=tables[i].lut;
+            const auto &tb=bh.tables[i].lut;
+            for(unsigned j=0; j<ta.size(); j++){
+                d += std::abs(ta[j]-tb[j]);
+            }
+        }
+        return d;
+    }
 };
+
+
+uint64_t hashForLutEntry(unsigned lutIndex, unsigned lutOffset, int value )
+{
+    const uint64_t S1 = 33554467; // next_prime(2^25)
+    const uint64_t S2 = 67108879; // next_prime(2^26)
+
+    assert((-1<=value) && (value<=+1));
+    return (lutIndex*S1+lutOffset)*S2 * (value+2);
+}
+
+uint64_t hashForTap(unsigned bitIndex, unsigned tapOffset, unsigned index )
+{
+    const uint64_t S1 = 134217757; // next_prime(2^27)
+    const uint64_t S2 = 268435459; // next_prime(2^28)
+
+    return (bitIndex*S1+tapOffset)*S2 * (index+1);
+}
+
+
+
+/* The hash is designed to be incrementally updatable as the
+ * parts of a hash are changed. So it is just the modulo-2^64 sum of
+ * a bunch of components based on the taps and lut entries
+ */
+uint64_t hash(const BitHash &bh)
+{
+    uint64_t acc=0;
+    for(unsigned i=0;i<bh.tables.size();i++){
+        const auto & t = bh.tables[i];
+        for(unsigned j=0; j<t.selectors.size(); j++){
+            acc += hashForTap(i, j, t.selectors[j]);
+        }
+        for(unsigned j=0; j<t.lut.size(); j++){
+            acc += hashForLutEntry(i, j, t.lut[j]);
+        }
+    }
+    return acc;
+}
 
 BitHash parse_bit_hash(std::istream &src)
 {

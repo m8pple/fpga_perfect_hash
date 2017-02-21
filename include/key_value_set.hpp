@@ -25,6 +25,7 @@ private:
     unsigned m_wValue;
     bool m_isKeyConcrete;
     unsigned m_nDistinctKeys;
+    unsigned m_maxHash;
 
     void setupProperties()
     {
@@ -86,6 +87,26 @@ public:
 
     unsigned getValueWidth() const
     { return m_wValue; }
+
+    //! If getMaxHash()==keys_size(), then this is a perfect hash
+    unsigned getMaxHash() const
+    {
+        return m_maxHash;
+    }
+
+    void setMaxHash(unsigned x=UINT_MAX)
+    {
+        if(x==UINT_MAX)
+            x=keys_size();
+        if(x<keys_size())
+            throw std::runtime_error("Can't request fewer hashes than there are keys.");
+        if(x>(1<<getKeyWidth()))
+            throw std::runtime_error("Can't request maxHash larger than number of bits in key.");
+        m_maxHash=x;
+    }
+
+    bool isMinimal() const
+    { return m_maxHash==keys_size(); }
 
     void print(std::ostream &dst, std::string indent="") const
     {

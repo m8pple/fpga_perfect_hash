@@ -27,17 +27,13 @@ int main() {
         key_value_set keys{tmp};
 
         std::cerr<<"Creating problem...\n";
-        auto prob=to_cnf(bh, keys.keys());
+        cnf_problem prob;
+        to_cnf(bh, keys.keys(), prob);
         std::cerr<<"Solving...\n";
         auto sol=minisat_solve(prob);
         if(sol.empty()){
             std::cerr<<"No solution\n";
         }else {
-            std::cerr<<"Checking raw...\n";
-            if(!is_solution(prob,sol)){
-                std::cerr<<"Fail\n";
-                exit(1);
-            }
 
             std::cerr << "Substituting...\n";
             auto back = substitute(bh, prob, sol);

@@ -71,6 +71,11 @@ std::vector<std::vector<unsigned> > makeWeightedRandomShuffle(TRng &rng,  unsign
             neededWeights.push_back(i);
     }
 
+    // If the input set is very sparse, we may not be able to
+    // find as many taps as we could use (e.g. we're using 6-LUTs, but
+    // there are only 5 active input bits)
+    wA=std::min(wA, (unsigned)neededWeights.size());
+
     // Ensure every needed input is in at least one address
     for(unsigned i=0;i<neededWeights.size();i++){
         res[i%wO].insert(neededWeights[i]);

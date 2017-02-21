@@ -136,7 +136,8 @@ BitHash bit_hash_polish(TRng &rng, const BitHash &bh, const key_value_set &probl
             }
         }
 
-        auto prob = to_cnf(res, problem.keys());
+        cnf_problem prob;
+        to_cnf(res, problem.keys(), prob);
         auto sol = minisat_solve(prob);
         if (verbose > 0) {
             std::cerr << "  CNF solution " << (sol.empty() ? "Failed" : "Succeeded") << "\n";
